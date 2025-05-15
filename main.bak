@@ -1,0 +1,60 @@
+"""Main planner entry"""
+from __future__ import annotations
+import datetime as dt, pytz
+from collections import defaultdict
+import logger
+from config import (TIMEZONE, LOG_BACK_DAYS, LOG_FORWARD_DAYS, FREEZE_DAYS,
+                    COLOR_OVERDUE, COLOR_DONE, COLOR_NORMAL, BUSY_CALENDARS)
+from gcal_api import get_service, list_events, list_events_multi, update_event_time, create_event
+from utils import parse_tags
+from vendo_api import save_snapshot
+from scheduler import schedule
+
+tz=pytz.timezone(TIMEZONE)
+iso_dt=dt.datetime.fromisoformat
+
+def range_dates(b,f):
+    today=dt.date.today()
+    return today-dt.timedelta(days=b), today+dt.timedelta(days=f)
+
+def tasks_from_events(events):
+    tasks=[]
+    for ev in events:
+        desc=ev.get('description','') or ''
+        tags=parse_tags(desc)
+        if not tags['vendo']: continue
+        tasks.append({
+            **tags,
+            'event_id':ev.get('id'),
+            'summary':ev.get('summary',''),
+            'description':desc,
+            'start': ev['start'].get('dateTime'),
+            'end':   ev['end'].get('dateTime')
+        })
+    return tasks
+
+def run():
+    svc=get_service()
+    start,end=range_dates(LOG_BACK_DAYS,LOG_FORWARD_DAYS)
+    tmin=tz.localize(dt.datetime.combine(start, dt.time.min))
+    tmax=tz.localize(dt.datetime.combine(end, dt.time.max))
+
+    all_ev=list_events(svc,tmin,tmax)
+    vendo=[e for e in all_ev if '#vendo' in ((e.get('description') or '').lower())]
+    other_events=list_events_multi(svc,BUSY_CALENDARS,tmin,tmax)
+    others=[e for e in other_events if '#vendo' not in ((e.get('description') or '').lower())]
+
+    tasks=tasks_from_events(vendo)
+    save_snapshot(tasks)
+
+    busy=defaultdict(list)  # dummy
+    scheduled,_=schedule(tasks,busy)
+
+    actions=[]
+    for t,s,e in scheduled:
+        print('Would schedule',t['summary'],s,'-',e)
+    logger.write_run_log([],actions,[])
+    print('Done')
+
+if __name__=='__main__':
+    run()

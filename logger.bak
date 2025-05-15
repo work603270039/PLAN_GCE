@@ -1,0 +1,33 @@
+"""Centralny log całej sesji w jednym pliku JSON."""
+import json, datetime as dt, pytz, os
+from pathlib import Path
+from config import TIMEZONE
+
+tz = pytz.timezone(TIMEZONE)
+LOG_DIR = Path(__file__).with_name("logs")
+LOG_DIR.mkdir(exist_ok=True)
+
+def _now_str():
+    return tz.localize(dt.datetime.now()).strftime("%Y%m%d_%H%M%S")
+
+def write_run_log(snapshot_before, actions, snapshot_after):
+    record = {
+        "timestamp": _now_str(),
+        "snapshot_before": snapshot_before,
+        "actions": actions,
+        "snapshot_after": snapshot_after
+    }
+    fname = LOG_DIR / f"run_{record['timestamp']}.json"
+    with open(fname, "w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False, indent=2)
+    print(f"[log] zapisano {fname}")
+
+def event_to_dict(ev):
+    return {
+        "id": ev.get('id'),
+        "summary": ev.get('summary'),
+        "start": ev.get('start').get('dateTime', ev.get('start').get('date')),
+        "end": ev.get('end').get('dateTime', ev.get('end').get('date')),
+        "colorId": ev.get('colorId'),
+        "description": ev.get('description')
+    }

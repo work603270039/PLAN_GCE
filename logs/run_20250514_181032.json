@@ -1,0 +1,139 @@
+{
+  "timestamp": "20250514_181032",
+  "snapshot_before": [
+    {
+      "id": "0visndq4c7ri5alc8i417hkr5i",
+      "summary": "Spotkanie TCL cal WORK",
+      "start": "2025-05-12T08:00:00+02:00",
+      "end": "2025-05-12T11:00:00+02:00",
+      "colorId": null,
+      "description": null
+    },
+    {
+      "id": "4de0usit0r4pn45qgq081ienap",
+      "summary": "Zad 4",
+      "start": "2025-05-15T08:00:00+02:00",
+      "end": "2025-05-15T14:00:00+02:00",
+      "colorId": null,
+      "description": "\r\n#vendo\r\n#time:6h\r\n#priority:3\r\n#due:16.05.25\r\n#done"
+    },
+    {
+      "id": "52bb6cuqkphvmn1aub6anj1d6d",
+      "summary": "Zad 2 ",
+      "start": "2025-05-15T14:00:00+02:00",
+      "end": "2025-05-15T16:00:00+02:00",
+      "colorId": null,
+      "description": "#vendo\n#time:2h\n#priority:6\n#due:21.05.25"
+    },
+    {
+      "id": "51t5b67an15t85sqmedk65in6u",
+      "summary": "Zad 1 ",
+      "start": "2025-05-16T08:00:00+02:00",
+      "end": "2025-05-16T11:00:00+02:00",
+      "colorId": null,
+      "description": "\r\n#vendo\r\n#time:3h\r\n#priority:7\r\n#due:16.05.25"
+    },
+    {
+      "id": "lk01tvesd5kbo4pvhgr9k4tht0",
+      "summary": "Wydarzeni do zablokowania",
+      "start": "2025-05-16T11:00:00+02:00",
+      "end": "2025-05-16T13:00:00+02:00",
+      "colorId": null,
+      "description": null
+    },
+    {
+      "id": "gp5vamhuuhqn4leuute0i95kk0",
+      "summary": "Zad 5 z vendo",
+      "start": "2025-05-16T13:00:00+02:00",
+      "end": "2025-05-16T16:00:00+02:00",
+      "colorId": null,
+      "description": "\r\n#vendo\r\n#time:3h\r\n#priority:1\r\n#due:17.05.25"
+    },
+    {
+      "id": "7djf9v59idnajbqt4kni6ggfjv",
+      "summary": "Zad 3",
+      "start": "2025-05-19T08:00:00+02:00",
+      "end": "2025-05-19T12:00:00+02:00",
+      "colorId": null,
+      "description": "#vendo\n#time:4h\n#priority:4\n#due:20.05.25"
+    }
+  ],
+  "actions": [
+    {
+      "type": "move",
+      "event_id": "51t5b67an15t85sqmedk65in6u",
+      "new_start": "2025-05-16T08:00:00+02:00",
+      "daysLate": 0
+    },
+    {
+      "type": "move",
+      "event_id": "gp5vamhuuhqn4leuute0i95kk0",
+      "new_start": "2025-05-16T13:00:00+02:00",
+      "daysLate": -1
+    },
+    {
+      "type": "move",
+      "event_id": "7djf9v59idnajbqt4kni6ggfjv",
+      "new_start": "2025-05-19T08:00:00+02:00",
+      "daysLate": -1
+    }
+  ],
+  "snapshot_after": [
+    {
+      "id": "0visndq4c7ri5alc8i417hkr5i",
+      "summary": "Spotkanie TCL cal WORK",
+      "start": "2025-05-12T08:00:00+02:00",
+      "end": "2025-05-12T11:00:00+02:00",
+      "colorId": null,
+      "description": null
+    },
+    {
+      "id": "4de0usit0r4pn45qgq081ienap",
+      "summary": "Zad 4",
+      "start": "2025-05-15T08:00:00+02:00",
+      "end": "2025-05-15T14:00:00+02:00",
+      "colorId": null,
+      "description": "\r\n#vendo\r\n#time:6h\r\n#priority:3\r\n#due:16.05.25\r\n#done"
+    },
+    {
+      "id": "52bb6cuqkphvmn1aub6anj1d6d",
+      "summary": "Zad 2 ",
+      "start": "2025-05-15T14:00:00+02:00",
+      "end": "2025-05-15T16:00:00+02:00",
+      "colorId": null,
+      "description": "#vendo\n#time:2h\n#priority:6\n#due:21.05.25"
+    },
+    {
+      "id": "51t5b67an15t85sqmedk65in6u",
+      "summary": "Zad 1 ",
+      "start": "2025-05-16T08:00:00+02:00",
+      "end": "2025-05-16T11:00:00+02:00",
+      "colorId": null,
+      "description": "\r\n#vendo\r\n#time:3h\r\n#priority:7\r\n#due:16.05.25"
+    },
+    {
+      "id": "lk01tvesd5kbo4pvhgr9k4tht0",
+      "summary": "Wydarzeni do zablokowania",
+      "start": "2025-05-16T11:00:00+02:00",
+      "end": "2025-05-16T13:00:00+02:00",
+      "colorId": null,
+      "description": null
+    },
+    {
+      "id": "gp5vamhuuhqn4leuute0i95kk0",
+      "summary": "Zad 5 z vendo",
+      "start": "2025-05-16T13:00:00+02:00",
+      "end": "2025-05-16T16:00:00+02:00",
+      "colorId": null,
+      "description": "\r\n#vendo\r\n#time:3h\r\n#priority:1\r\n#due:17.05.25"
+    },
+    {
+      "id": "7djf9v59idnajbqt4kni6ggfjv",
+      "summary": "Zad 3",
+      "start": "2025-05-19T08:00:00+02:00",
+      "end": "2025-05-19T12:00:00+02:00",
+      "colorId": null,
+      "description": "#vendo\n#time:4h\n#priority:4\n#due:20.05.25"
+    }
+  ]
+}
