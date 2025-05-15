@@ -1,53 +1,69 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 """
-cycle_runner.py – resilient CI‑style loop
-========================================
-1. **Autocommit** wszystkich nie‑stage’owanych zmian (jeśli są) →
-   „WIP auto‑save”. Zapobiega blokadzie przy `git pull`.
-2. `git pull --rebase origin main`   – aktualizuje repo.
-3. **gpt_patch.py** (log‑aware)      – naprawia kod przed run.
-4. Uruchamia `main.py`, zapisując wynik do `logs/run_<stamp>.log`.
-5. Dodaje log *(z ‑f, bo zwykle `logs/` jest w .gitignore)*, commit „log run”.
-6. Wywołuje `gpt_patch.py` **ponownie** (bo log mógł wskazać nowe bugi).
-7. Push.
+cycle_runner.py – pełny cykl: pull → patch → run → log → patch → push
+====================================================================
+Uruchom jeden plik, a otrzymasz automatyczny „mini-CI” offline + GitHub.
 
-Skrypt kończy się bez wyjątku nawet, gdy któryś krok zwróci błąd; zamiast
-tego wypisuje ostrzeżenie i przechodzi dalej.
+**Kolejność:**
+1. *autocommit* — jeżeli w katalogu są nie-zacommitowane zmiany,
+   zapisuje je jako `WIP auto-save`, żeby `git pull --rebase` nie został
+   zablokowany.
+2. `git pull --rebase origin main` — podciąga najnowszy kod (bez merge-
+   commitów).
+3. **gpt_patch.py** (tag `pre-run`) — usuwa błędy typu IndentationError
+   zanim program się uruchomi.
+4. Uruchamia `main.py`; `stdout`+`stderr` zapisuje do
+   `logs/run_<YYYYMMDD-HHMMSS>.log`, jednocześnie pokazując w konsoli.
+5. Dodaje log do repo komendą `git add -f`, omijając `.gitignore`, i
+   commit-uje z wiadomością `log run <plik>`.
+6. **gpt_patch.py** (tag `post-run`) — analizuje świeży log i poprawia
+   kod, jeśli pojawiły się nowe tracebacki.
+7. `git push origin <branch>` — wypycha cały zestaw commitów.
+
+Skrypt NA KOŃCU nie rzuca wyjątków — jeśli któryś krok zwróci nie-zero
+`returncode`, wypisze ostrzeżenie i kontynuuje, tak aby push zawsze
+spróbował się wykonać.
 """
 
+from __future__ import annotations
 import subprocess, datetime, pathlib, sys, os, shlex
 
+# ───────────────────────── KONFIG ─────────────────────────
 REPO = pathlib.Path(__file__).resolve().parent
 PY   = sys.executable
 LOGS = REPO / "logs"
 LOGS.mkdir(exist_ok=True)
 
-# ───────────────────────── helpers ──────────────────────────
+# ───────────────────────── helpers ─────────────────────────
 
 def run(cmd: str | list[str], ok_codes={0}):
+    """Uruchom polecenie; zwróć kod wyjścia; wypisz ostrzeżenie jeśli ≠ 0."""
     if isinstance(cmd, str):
         cmd_list = shlex.split(cmd)
     else:
         cmd_list = cmd
     proc = subprocess.run(cmd_list, cwd=REPO, text=True)
     if proc.returncode not in ok_codes:
-        print(f"⚠️  cmd failed ({proc.returncode}): {' '.join(cmd_list)}")
+        print(f"⚠️  cmd {' '.join(cmd_list)} exit {proc.returncode}")
     return proc.returncode
 
 
 def autocommit():
-    if run(["git", "diff", "--quiet"], ok_codes={0,1}):  # 1 ⇒ zmiany
-        print("📝 Committing unstaged changes…")
+    # 0 – brak różnic, 1 – różnice, 128 – błąd repo
+    if run(["git", "diff", "--quiet"], ok_codes={0,1}):
+        print("📝 WIP auto-save…")
         run(["git", "add", "-A"])
-        run(["git", "commit", "-m", "WIP auto‑save"])
+        run(["git", "commit", "-m", "WIP auto-save"])
 
 
 def git_pull():
+    print("🔄 git pull --rebase…")
     run(["git", "pull", "--rebase", "origin", "main"], ok_codes={0,1})
 
 
-def patch_code(tag="pre-run"):
-    print(f"🩹 GPT patch ({tag})…")
+def patch_code(tag: str):
+    print(f"🩹 gpt_patch.py ({tag})…")
     run([PY, "gpt_patch.py"], ok_codes={0})
 
 
@@ -60,11 +76,11 @@ def run_main() -> pathlib.Path:
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT,
                                 text=True)
-        for line in proc.stdout:
+        for line in proc.stdout:   # mirror to console + file
             print(line, end="")
             f.write(line)
         proc.wait()
-        print(f"◀️  main.py exited {proc.returncode}")
+        print(f"◀️  main.py exit {proc.returncode}")
     return logfile
 
 
@@ -74,10 +90,12 @@ def add_log(path: pathlib.Path):
 
 
 def final_push():
-    branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=REPO, text=True).strip()
+    branch = subprocess.check_output([
+        "git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=REPO, text=True).strip()
+    print("🚀 git push…")
     run(["git", "push", "origin", branch])
 
-# ─────────────────────────── cycle ──────────────────────────
+# ─────────────────────────── cycle ─────────────────────────
 
 def main():
     os.chdir(REPO)
