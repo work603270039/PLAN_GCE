@@ -23,7 +23,7 @@ MAX_CODE_SIZE  = 30_000     # 30 kB
 MAX_LOG_LINES  = 250        # z końca pliku
 MODEL          = "o3"
 TEMPERATURE    = 0.15
-DEBUG          = False      # True → pokaże prompt + odpowiedź
+DEBUG          = TRUE      # True → pokaże prompt + odpowiedź
 
 SYSTEM_NOTE = (
     "You are a helpful linter assistant. You will receive the full content of a Python file, "
@@ -72,8 +72,8 @@ def error_sources_from_logs() -> Dict[pathlib.Path, str]:
             continue
         snippet = "\n".join(tail)
         for m in _LOG_RE.finditer(snippet):
-            rel = m.group(1).replace("\\", "/")
-            src = (REPO_DIR / rel).resolve()
+            rel = pathlib.Path(m.group(1)).name              # ← bierz TYLKO nazwę pliku
+            src = next(REPO_DIR.rglob(rel), None)            # szukaj w repo
             if src.exists() and src.stat().st_size <= MAX_CODE_SIZE:
                 mapping.setdefault(src, []).append(f"{log_path.name}: …{m.group(0)}")
     return {p: "\n".join(snips[-3:]) for p, snips in mapping.items()}

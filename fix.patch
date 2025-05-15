@@ -1,96 +1,183 @@
-diff --git a/logger.py b/logger.py
-@@
--import json, datetime as dt, pathlib
--from config import TIMEZONE
--
--LOG_DIR=pathlib.Path(__file__).with_suffix('').parent / "log"
--LOG_DIR.mkdir(exist_ok=True)
--
--def event_to_dict(ev):
--    return {
--        "id": ev.get("id"),
--        "summary": ev.get("summary"),
--        "start": ev["start"],
--        "end":   ev["end"],
--        "color": ev.get("colorId"),
--    }
--
--def write_run_log(before, actions, after, trace, plan):
--    ts=dt.datetime.now().strftime("%Y%m%d_%H%M%S")
--    fname=LOG_DIR/f"run_{ts}.json"
--    payload = {
--        "before":   before,
--        "actions":  actions,
--        "after":    after,
--        "cmd_trace": trace,
--        "plan":     plan
--    }
--    fname.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
--    print(f"[log] zapisano {fname}")
-+"""
-+Structured logger – JSONL, rotacja dzienna
-+"""
-+from __future__ import annotations
-+import json, logging, logging.handlers, datetime as dt, pathlib, uuid
-+
-+LOG_DIR = pathlib.Path(__file__).with_suffix("").parent / "log"
-+LOG_DIR.mkdir(exist_ok=True)
-+
-+class JSONFormatter(logging.Formatter):
-+    def format(self, record):
-+        base = {
-+            "ts": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
-+            "level": record.levelname.lower(),
-+            "msg": record.getMessage(),
-+        }
-+        if record.args:
-+            base["data"] = record.args
-+        return json.dumps(base, ensure_ascii=False)
-+
-+_handler = logging.handlers.TimedRotatingFileHandler(
-+    LOG_DIR / "run.jsonl", when="midnight", backupCount=14, encoding="utf-8"
-+)
-+_handler.setFormatter(JSONFormatter())
-+LOGGER = logging.getLogger("vendo_sync")
-+LOGGER.setLevel(logging.INFO)
-+LOGGER.addHandler(_handler)
-+
-+# convenience -----------------------------------------------------------------
-+
-+def event_to_dict(ev):
-+    return {
-+        "id": ev.get("id"),
-+        "summary": ev.get("summary"),
-+        "start": ev["start"],
-+        "end":   ev["end"],
-+        "color": ev.get("colorId"),
-+    }
-+
-+def log_run_snapshot(label: str, payload: dict):
-+    LOGGER.info(label, payload)
-+
-+def new_run_id() -> str:
-+    return uuid.uuid4().hex[:8]
 diff --git a/main.py b/main.py
 @@
--import logger
+-.*                                                                                    
++"""Planner #vendo – główny moduł"""
++from __future__ import annotations
++
++import datetime as dt, pytz, re
++from collections import defaultdict
 +import logger
-@@
--    trace = [f"list_events => {len(all_ev)} ev",
++
++from config import (
++    TIMEZONE, LOG_BACK_DAYS, LOG_FORWARD_DAYS, FREEZE_DAYS,
++    COLOR_OVERDUE, COLOR_DONE, COLOR_NORMAL, BUSY_CALENDARS,
++)
++from gcal_api import (
++    get_service, list_events, list_events_multi,
++    update_event_time, create_event,
++)
++from utils import parse_tags
++from vendo_api import save_snapshot
++from scheduler import schedule
++
++tz      = pytz.timezone(TIMEZONE)
++iso_dt  = dt.datetime.fromisoformat
++
++# ------------------------------------------------------------------ #
++#  Pomocnicze
++
++def range_dates(back: int, fwd: int) -> tuple[dt.date, dt.date]:
++    today = dt.date.today()
++    return today - dt.timedelta(days=back), today + dt.timedelta(days=fwd)
++
++def tasks_from_events(events):
++    tasks = []
++    for ev in events:
++        desc = ev.get("description", "") or ""
++        tags = parse_tags(desc)
++        if not tags["vendo"]:
++            continue
++        m = re.search(r"#age(\\d+)", desc, re.I)
++        if m:
++            tags["age"] = int(m.group(1))
++        tasks.append({
++            **tags,
++            "event_id": ev.get("id"),
++            "summary":  ev.get("summary", ""),
++            "description": desc,
++            "start": ev["start"].get("dateTime"),
++            "end":   ev["end"].get("dateTime"),
++        })
++    return tasks
++
++def busy_map(events):
++    mp = defaultdict(list)
++    for ev in events:
++        desc = (ev.get("description") or "").lower()
++        if "#done" in desc:
++            continue
++        s_iso = ev["start"].get("dateTime")
++        e_iso = ev["end"].get("dateTime")
++        if not s_iso or not e_iso:
++            continue
++        s = iso_dt(s_iso); e = iso_dt(e_iso)
++        mp[s.date()].append({"start": s, "end": e})
++    return mp
++
++def color(is_done, late):
++    if is_done:
++        return COLOR_DONE
++    if late > 0:
++        return COLOR_OVERDUE
++    return COLOR_NORMAL
++
++# ------------------------------------------------------------------ #
++#  Główna funkcja
++
++def run() -> None:
 +    run_id = logger.new_run_id()
-+    trace = [f"run {run_id} start",
-+             f"list_events => {len(all_ev)} ev",
-              f"vendo => {len(vendo)}",
-              f"other_events => {len(other_events)}"]
-@@
--    logger.write_run_log(snap_before, actions, snap_after, trace, plan)
++    trace  = [f"run {run_id} start"]
++
++    svc   = get_service()
++    start, end = range_dates(LOG_BACK_DAYS, LOG_FORWARD_DAYS)
++    tmin  = tz.localize(dt.datetime.combine(start, dt.time.min))
++    tmax  = tz.localize(dt.datetime.combine(end,   dt.time.max))
++
++    all_ev = list_events(svc, tmin, tmax)
++    trace.append(f"list_events => {len(all_ev)} ev")
++
++    vendo = [e for e in all_ev
++             if "#vendo" in ((e.get("description") or "").lower())]
++    other_events = list_events_multi(svc, BUSY_CALENDARS, tmin, tmax)
++    others = [e for e in other_events
++              if "#vendo" not in ((e.get("description") or "").lower())]
++
++    trace.append(f"vendo => {len(vendo)}")
++    trace.append(f"other_events => {len(other_events)}")
++
++    tasks = tasks_from_events(vendo)
++    for t in tasks:
++        t["age"] = t.get("age", 0) + 1
++    save_snapshot(tasks)
++    trace.append(f"tasks => {len(tasks)}")
++
++    # --- zamrożone vs ruchome (FREEZE_DAYS) ---
++    today   = dt.date.today()
++    locked, movable = [], []
++    for t in tasks:
++        if t["start"] and not t.get("done"):
++            d = iso_dt(t["start"]).date()
++            if (d - today).days < FREEZE_DAYS:
++                locked.append(t); continue
++        movable.append(t)
++    trace.append(f"locked => {len(locked)} / movable => {len(movable)}")
++
++    # --- unfreeze kolizje ---
++    def _overlap(a_s, a_e, b_s, b_e):
++        return not (a_e <= b_s or b_e <= a_s)
++
++    unfreeze=[]
++    for t in locked[:]:
++        a_s = iso_dt(t["start"]); a_e = iso_dt(t["end"])
++        for ev in other_events:
++            rs = ev["start"].get("dateTime") or ev["start"].get("date")
++            re = ev["end"].get("dateTime")   or ev["end"].get("date")
++            if not (rs and re):
++                continue
++            if "T" not in rs:
++                day = dt.date.fromisoformat(rs)
++                b_s = tz.localize(dt.datetime.combine(day, dt.time(8)))
++                b_e = tz.localize(dt.datetime.combine(day, dt.time(16)))
++            else:
++                b_s = iso_dt(rs); b_e = iso_dt(re)
++            if _overlap(a_s, a_e, b_s, b_e):
++                unfreeze.append(t); break
++    for t in unfreeze:
++        locked.remove(t); movable.append(t)
++    trace.append(f"unfreeze => {len(unfreeze)}")
++
++    # --- schedule ---
++    busy       = busy_map(others)
++    scheduled, _late = schedule(movable, busy)
++    trace.append(f"scheduled => {len(scheduled)}")
++
++    # --- akcje ---
++    actions=[]
++    def log(a): actions.append(a)
++
++    for t, s, e in scheduled:
++        late = max(0, (s.date() - (t.get("due") or s.date())).days)
++        col  = color(t.get("done"), late)
++        desc = t["description"]
++
++        if t.get("event_id"):
++            update_event_time(
++                svc, t["event_id"], s, e,
++                color_id   = col,
++                description= desc,
++            )
++            log({"type": "move", "id": t["event_id"], "late": late})
++        else:
++            ev = create_event(svc, t["summary"] or "Task", s, e, col, desc)
++            log({"type": "create", "id": ev["id"], "late": late})
++
++    # --- zapis logu ---
++    snap_before = [logger.event_to_dict(e) for e in all_ev]
++    snap_after  = [logger.event_to_dict(e)
++                   for e in list_events(svc, tmin, tmax)]
++
++    plan = {
++        "locked":   [t["summary"] for t in locked],
++        "movable":  [t["summary"] for t in movable],
++        "scheduled":[t["summary"] for t,_,_ in scheduled],
++    }
++
 +    logger.log_run_snapshot("snapshot_before", {"run": run_id, "events": snap_before})
 +    logger.log_run_snapshot("actions",        {"run": run_id, "list": actions})
 +    logger.log_run_snapshot("snapshot_after", {"run": run_id, "events": snap_after})
 +    logger.log_run_snapshot("trace",          {"run": run_id, "steps": trace})
 +    logger.log_run_snapshot("plan",           {"run": run_id, **plan})
-@@
--    print(f"Akcje: {len(actions)}")
++
 +    print(f"[run {run_id}] Akcje: {len(actions)}")
 +
 +if __name__ == "__main__":
@@ -99,17 +186,3 @@ diff --git a/main.py b/main.py
 +    except Exception as e:
 +        logger.LOGGER.exception("fatal error", {"error": str(e)})
 +        raise
-+
-+```
-
----
-
-**Po uruchomieniu** nowy plik `log/run.jsonl` będzie wyglądał tak
-(1 wpis = 1 linia):
-
-```json
-{"ts":"2025-05-15T15:02:10Z","level":"info","msg":"snapshot_before","data":{"run":"a3b7c9d1","events":[...]}}
-{"ts":"2025-05-15T15:02:10Z","level":"info","msg":"actions","data":{"run":"a3b7c9d1","list":[...]}}
-{"ts":"2025-05-15T15:02:10Z","level":"info","msg":"snapshot_after","data":{"run":"a3b7c9d1","events":[...]}}
-{"ts":"2025-05-15T15:02:10Z","level":"info","msg":"trace","data":{"run":"a3b7c9d1","steps":["run a3b7c9d1 start","list_events => 17 ev",...]} }
-{"ts":"2025-05-15T15:02:10Z","level":"info","msg":"plan","data":{"run":"a3b7c9d1","locked":[...],"movable":[...],"scheduled":[...]}}
